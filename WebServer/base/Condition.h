@@ -2,7 +2,7 @@
  * File: Condition.h
  * Project: base
  * Author: sandy
- * Last Modified: 2020-10-29 09:00:55
+ * Last Modified: 2020-10-30 20:31:20
  */
 
 #pragma once
@@ -15,7 +15,7 @@
 #include "MutexLock.h"
 #include "noncopyable.h"
 
-#include <spdlog/spdlog.h>
+#include "../Logger.h"
 
 /*
  * "Linux多线程服务端编程:使用muduo C++网络库" p.40
@@ -29,9 +29,9 @@ class Condition : noncopyable {
 
     ~Condition() {
         int ret = pthread_cond_destroy(&cond);
-        spdlog::info("~Condition()");
+        Logger::getLogger().info("~Condition()");
         if (EBUSY == ret) {
-            spdlog::warn("pthread_cond_destroy returns EBUSY");
+            Logger::getLogger().warn("pthread_cond_destroy returns EBUSY");
         }
     }
 

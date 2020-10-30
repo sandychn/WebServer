@@ -1,3 +1,10 @@
+/*
+ * File: CurrentThread.h
+ * Project: base
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:56:18
+ */
+
 #pragma once
 
 #include <stdint.h>

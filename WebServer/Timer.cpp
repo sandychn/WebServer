@@ -1,9 +1,18 @@
+/*
+ * File: Timer.cpp
+ * Project: WebServer
+ * Author: sandy
+ * Last Modified: 2020-10-30 20:30:59
+ */
+
 #include "Timer.h"
+#include "Logger.h"
 
 #include <sys/time.h>
 #include <unistd.h>
 
 #include <queue>
+
 
 TimerNode::TimerNode(std::shared_ptr<HttpData> requestData, int timeout) : deleted_(false), SPHttpData(requestData) {
     update(timeout);
@@ -12,7 +21,10 @@ TimerNode::TimerNode(std::shared_ptr<HttpData> requestData, int timeout) : delet
 TimerNode::TimerNode(TimerNode &tn) : expiredTime_(0), SPHttpData(tn.SPHttpData) {}
 
 TimerNode::~TimerNode() {
-    if (SPHttpData) SPHttpData->handleClose();
+    if (SPHttpData) {
+        Logger::getLogger().info("closing HttpData in ~TimerNode() (fd={0})", SPHttpData->getChannel()->getFd());
+        SPHttpData->handleClose();
+    }
 }
 
 void TimerNode::update(int timeout) {

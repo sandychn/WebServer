@@ -1,3 +1,10 @@
+/*
+ * File: EventLoopThread.h
+ * Project: WebServer
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:58:00
+ */
+
 #pragma once
 
 #include "EventLoop.h"

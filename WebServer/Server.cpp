@@ -2,7 +2,7 @@
  * File: Server.cpp
  * Project: WebServer
  * Author: Sandy
- * Last Modified: 2020-10-29 15:32:51
+ * Last Modified: 2020-10-30 20:30:32
  */
 
 #include "Server.h"
@@ -14,9 +14,8 @@
 #include <functional>
 
 #include "Util.h"
+#include "Logger.h"
 #include "base/ErrorHandle.h"
-
-#include <spdlog/spdlog.h>
 
 Server::Server(EventLoop *loop, int threadNum, int port)
     : started_(false),
@@ -55,7 +54,7 @@ void Server::handleNewConnection() {
         }
 
         EventLoop* loop = eventLoopThreadPool_->getNextLoop();
-        spdlog::info("New connection from {0}:{1} (fd={2})",
+        Logger::getLogger().info("New connection from {0}:{1} (fd={2})",
                      inet_ntoa(client_addr.sin_addr),
                      ntohs(client_addr.sin_port),
                      accept_fd);

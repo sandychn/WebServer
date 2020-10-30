@@ -2,7 +2,7 @@
  * File: HttpData.cpp
  * Project: WebServer
  * Author: Sandy
- * Last Modified: 2020-10-29 23:32:47
+ * Last Modified: 2020-10-30 20:30:04
  */
 
 #include "HttpData.h"
@@ -14,16 +14,17 @@
 #include "Channel.h"
 #include "EventLoop.h"
 #include "Util.h"
+#include "Config.h"
 #include "time.h"
 
-#include <spdlog/spdlog.h>
+#include "Logger.h"
 
 pthread_once_t MimeType::once_control = PTHREAD_ONCE_INIT;
 std::unordered_map<std::string, std::string> MimeType::mime;
 
 const __uint32_t DEFAULT_EVENT = EPOLLIN | EPOLLET | EPOLLONESHOT;
 const int DEFAULT_EXPIRED_TIME = 2000;              // ms
-const int DEFAULT_KEEP_ALIVE_TIME = 5 * 60 * 1000;  // ms
+const int DEFAULT_KEEP_ALIVE_TIME = 60 * 1000;      // ms
 
 char favicon[555] = {
     '\x89', 'P',    'N',    'G',    '\xD',  '\xA',  '\x1A', '\xA',  '\x0',  '\x0',  '\x0',  '\xD',  'I',    'H',
@@ -109,19 +110,12 @@ HttpData::HttpData(EventLoop *loop, int connfd)
 }
 
 void HttpData::reset() {
-    // inBuffer_.clear();
     fileName_.clear();
-    path_.clear();
     nowReadPos_ = 0;
     state_ = ProcessState::STATE_PARSE_URI;
     hState_ = ParseState::H_START;
     headers_.clear();
-    // keepAlive_ = false;
-    if (timer_.lock()) {
-        std::shared_ptr<TimerNode> my_timer(timer_.lock());
-        my_timer->clearReq();
-        timer_.reset();
-    }
+    seperateTimer();
 }
 
 void HttpData::seperateTimer() {
@@ -137,13 +131,15 @@ void HttpData::handleRead() {
     do {
         bool zero = false;
         int read_num = Util::readn(fd_, inBuffer_, zero);
-        spdlog::info("Request from fd={0}: {1}", fd_, Util::replaceCRLF(inBuffer_));
+        Logger::getLogger().info("Request from fd={0}: {1}", fd_, Util::replaceCRLF(inBuffer_));
+        Logger::getLogger().info("Request from fd={0}: {1}", fd_, Util::replaceCRLF(inBuffer_));
+        Logger::getLogger().debug("read_num={0}, zero={1}", read_num, zero);
         if (connectionState_ == ConnectionState::H_DISCONNECTING) {
             inBuffer_.clear();
             break;
         }
         if (read_num < 0) {
-            spdlog::warn("read_num<0: {0}", strerror(errno));
+            Logger::getLogger().warn("read_num<0: {0}", Util::getErrnoString());
             error_ = true;
             handleError(fd_, 400, "Bad Request");
             break;
@@ -161,8 +157,8 @@ void HttpData::handleRead() {
             if (flag == URIState::PARSE_URI_AGAIN) {
                 break;
             } else if (flag == URIState::PARSE_URI_ERROR) {
-                spdlog::warn("flag == URIState::PARSE_URI_ERROR : {0}", strerror(errno));
-                spdlog::warn("fd = {0}, inBuffer = ", fd_, Util::replaceCRLF(inBuffer_));
+                Logger::getLogger().warn("flag == URIState::PARSE_URI_ERROR : {0}", Util::getErrnoString());
+                Logger::getLogger().warn("fd = {0}, inBuffer = ", fd_, Util::replaceCRLF(inBuffer_));
                 inBuffer_.clear();
                 error_ = true;
                 handleError(fd_, 400, "Bad Request");
@@ -176,20 +172,19 @@ void HttpData::handleRead() {
             if (flag == HeaderState::PARSE_HEADER_AGAIN) {
                 break;
             } else if (flag == HeaderState::PARSE_HEADER_ERROR) {
-                spdlog::warn("flag == HeaderState::PARSE_HEADER_ERROR : {0}", strerror(errno));
+                Logger::getLogger().warn("flag == HeaderState::PARSE_HEADER_ERROR : {0}", Util::getErrnoString());
                 error_ = true;
                 handleError(fd_, 400, "Bad Request");
                 break;
             }
             if (method_ == HttpMethod::METHOD_POST) {
-                // POST方法准备
-                state_ = ProcessState::STATE_RECV_BODY;
+                state_ = ProcessState::STATE_RECV_BODY;  // POST方法准备
             } else {
                 state_ = ProcessState::STATE_ANALYSIS;
             }
         }
         if (state_ == ProcessState::STATE_RECV_BODY) {
-            spdlog::info("state_ == ProcessState::STATE_RECV_BODY");
+            Logger::getLogger().info("state_ == ProcessState::STATE_RECV_BODY");
             auto it = headers_.find("Content-Length");
             int content_length = (it == headers_.end() ? -1 : stoi(it->second));
             if (it == headers_.end()) {
@@ -197,8 +192,8 @@ void HttpData::handleRead() {
                 handleError(fd_, 400, "Bad Request: Lack of argument (Content-Length)");
                 break;
             }
-            spdlog::debug("[state_ == ProcessState::STATE_RECV_BODY] content_length = {}", content_length);
-            spdlog::debug("[state_ == ProcessState::STATE_RECV_BODY] inBuffer = {}", inBuffer_);
+            Logger::getLogger().debug("[state_ == ProcessState::STATE_RECV_BODY] content_length = {}", content_length);
+            Logger::getLogger().debug("[state_ == ProcessState::STATE_RECV_BODY] inBuffer = {}", inBuffer_);
             if (static_cast<int>(inBuffer_.size()) < content_length) break;
             state_ = ProcessState::STATE_ANALYSIS;
         }
@@ -214,28 +209,18 @@ void HttpData::handleRead() {
         }
     } while (false);
 
-    // cout << "state_=" << state_ << endl;
     if (!error_) {
         if (outBuffer_.size() > 0) {
             handleWrite();
-            // events_ |= EPOLLOUT;
         }
         // error_ may change
         if (!error_ && state_ == ProcessState::STATE_FINISH) {
             this->reset();
-            if (inBuffer_.size() > 0) {
-                if (connectionState_ != ConnectionState::H_DISCONNECTING) handleRead();
+            if (inBuffer_.size() > 0 && connectionState_ != ConnectionState::H_DISCONNECTING) {
+                handleRead();
             }
-
-            // if ((keepAlive_ || inBuffer_.size() > 0) && connectionState_ ==
-            // H_CONNECTED)
-            // {
-            //     this->reset();
-            //     events_ |= EPOLLIN;
-            // }
         } else if (!error_ && connectionState_ != ConnectionState::H_DISCONNECTED) {
             channel_->setEvents(events_ |= EPOLLIN);
-            // events_ |= EPOLLIN;
         }
     }
 }
@@ -244,11 +229,12 @@ void HttpData::handleWrite() {
     if (!error_ && connectionState_ != ConnectionState::H_DISCONNECTED) {
         __uint32_t events_ = channel_->getEvents();
         if (Util::writen(fd_, outBuffer_) < 0) {
-            spdlog::error("writen error: {0}", strerror(errno));
+            Logger::getLogger().error("writen error: {0}", Util::getErrnoString());
             channel_->setEvents(0);
             error_ = true;
         }
         if (outBuffer_.size() > 0) {
+            Logger::getLogger().debug("outBuffer_.size() > 0");
             channel_->setEvents(events_ | EPOLLOUT);
         }
     }
@@ -267,23 +253,27 @@ void HttpData::handleConn() {
             }
             events_ |= EPOLLET;
             channel_->setEvents(events_);
-            loop_->updatePoller(channel_, timeout);
+            loop_->updatePoller(channel_, timeout); // will call addTimer()
         } else if (keepAlive_) {
             events_ |= (EPOLLIN | EPOLLET);
             channel_->setEvents(events_);
             int timeout = DEFAULT_KEEP_ALIVE_TIME;
-            loop_->updatePoller(channel_, timeout);
+            loop_->updatePoller(channel_, timeout); // will call addTimer()
         } else {
             events_ |= (EPOLLIN | EPOLLET);
             channel_->setEvents(events_);
             int timeout = (DEFAULT_KEEP_ALIVE_TIME >> 1);
-            loop_->updatePoller(channel_, timeout);
+            loop_->updatePoller(channel_, timeout); // will call addTimer()
         }
     } else if (!error_ && connectionState_ == ConnectionState::H_DISCONNECTING && (events_ & EPOLLOUT)) {
         events_ = (EPOLLOUT | EPOLLET);
         channel_->setEvents(events_);
     } else {
-        // cout << "close with errors" << endl;
+        if (error_) {
+            Logger::getLogger().warn("close with error");
+        } else {
+            Logger::getLogger().info("runInLoop(bind(&HttpData::handleClose, shared_from_this()))");
+        }
         loop_->runInLoop(bind(&HttpData::handleClose, shared_from_this()));
     }
 }
@@ -298,7 +288,7 @@ URIState HttpData::parseURI() {
     }
     // 去掉请求行所占的空间，节省空间
     std::string requestLine = inBuffer_.substr(0, pos);
-    spdlog::debug("requestLine: {}", requestLine);
+    Logger::getLogger().debug("requestLine: {}", requestLine);
     if (inBuffer_.size() > pos + 1) {
         inBuffer_ = inBuffer_.substr(pos + 1);
     } else {
@@ -450,11 +440,9 @@ HeaderState HttpData::parseHeaders() {
 }
 
 AnalysisState HttpData::analysisRequest() {
-    if (method_ == HttpMethod::METHOD_POST) {
-        // to be implemented
-        handleError(fd_, 501, "Not Implemented");
+    std::string requestFileFullPath = Config::webPath + Config::pathSeperator + fileName_;
 
-    } else if (method_ == HttpMethod::METHOD_GET || method_ == HttpMethod::METHOD_HEAD) {
+    if (method_ == HttpMethod::METHOD_GET) {
         std::string header;
         header += "HTTP/1.1 200 OK\r\n";
 
@@ -469,12 +457,9 @@ AnalysisState HttpData::analysisRequest() {
             }
         } while (false);
 
-        int dot_pos = fileName_.find('.');
-        std::string filetype = MimeType::getMime(dot_pos < 0 ? "default" : fileName_.substr(dot_pos));
-
         // echo test
         if (fileName_ == "hello") {
-            spdlog::debug("echo test");
+            Logger::getLogger().debug("echo test");
             std::string echoMessage = "Hello World";
             outBuffer_ = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
             outBuffer_ += std::to_string(echoMessage.length()) + "\r\n\r\n";
@@ -493,39 +478,177 @@ AnalysisState HttpData::analysisRequest() {
         }
 
         struct stat sbuf;
-        if (stat(fileName_.c_str(), &sbuf) < 0) {
+
+        if (stat(requestFileFullPath.c_str(), &sbuf) < 0) {
             header.clear();
             handleError(fd_, 404, "Not Found");
             return AnalysisState::ANALYSIS_ERROR;
         }
+
+        int dot_pos = fileName_.find('.');
+        std::string filetype = MimeType::getMime(
+            dot_pos < 0 ? "default" : fileName_.substr(dot_pos));
+
         header += "Content-Type: " + filetype + "\r\n";
         header += "Content-Length: " + std::to_string(sbuf.st_size) + "\r\n";
         header += "Server: " + Util::getServerName() + "\r\n";
-        // 头部结束
         header += "\r\n";
         outBuffer_ += header;
 
-        if (method_ == HttpMethod::METHOD_HEAD) return AnalysisState::ANALYSIS_SUCCESS;
-
-        int src_fd = open(fileName_.c_str(), O_RDONLY, 0);
+        int src_fd = open(requestFileFullPath.c_str(), O_RDONLY, 0);
         if (src_fd < 0) {
             outBuffer_.clear();
             handleError(fd_, 404, "Not Found");
             return AnalysisState::ANALYSIS_ERROR;
         }
-        void *mmapRet = mmap(NULL, sbuf.st_size, PROT_READ, MAP_PRIVATE, src_fd, 0);
+        
+        void* mmapRet = mmap(NULL, sbuf.st_size, PROT_READ, MAP_PRIVATE, src_fd, 0);
         close(src_fd);
-        if (mmapRet == (void *)-1) {
+        
+        if (mmapRet == MAP_FAILED) {
             munmap(mmapRet, sbuf.st_size);
             outBuffer_.clear();
             handleError(fd_, 404, "Not Found");
             return AnalysisState::ANALYSIS_ERROR;
         }
-        char *src_addr = static_cast<char *>(mmapRet);
+        char* src_addr = static_cast<char*>(mmapRet);
         outBuffer_ += std::string(src_addr, src_addr + sbuf.st_size);
         munmap(mmapRet, sbuf.st_size);
         return AnalysisState::ANALYSIS_SUCCESS;
     }
+    
+    if (method_ == HttpMethod::METHOD_HEAD) {
+        std::string header;
+        header += "HTTP/1.1 200 OK\r\n";
+
+        do {
+            auto it = headers_.find("Connection");
+            if (it == headers_.end()) break;
+            const std::string& connectionValue = it->second;
+            if (connectionValue == "Keep-Alive" || connectionValue == "keep-alive") {
+                keepAlive_ = true;
+                header += "Connection: Keep-Alive\r\n";
+                header += "Keep-Alive: timeout=" + std::to_string(DEFAULT_KEEP_ALIVE_TIME) + "\r\n";
+            }
+        } while (false);
+
+        // echo test
+        if (fileName_ == "hello") {
+            Logger::getLogger().debug("echo test");
+            std::string echoMessage = "Hello World";
+            outBuffer_ = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
+            outBuffer_ += std::to_string(echoMessage.length()) + "\r\n\r\n";
+            outBuffer_ += echoMessage;
+            return AnalysisState::ANALYSIS_SUCCESS;
+        }
+
+        if (fileName_ == "favicon.ico") {
+            header += "Content-Type: " + MimeType::getMime(".ico") + "\r\n";
+            header += "Content-Length: " + std::to_string(sizeof(favicon)) + "\r\n";
+            header += "Server: " + Util::getServerName() + "\r\n";
+            header += "\r\n";
+            outBuffer_ += header;
+            outBuffer_ += std::string(favicon, favicon + sizeof(favicon));
+            return AnalysisState::ANALYSIS_SUCCESS;
+        }
+
+        struct stat sbuf;
+        if (stat(requestFileFullPath.c_str(), &sbuf) < 0) {
+            header.clear();
+            handleError(fd_, 404, "Not Found");
+            return AnalysisState::ANALYSIS_ERROR;
+        }
+
+        int dot_pos = fileName_.find('.');
+        std::string filetype = MimeType::getMime(dot_pos < 0 ? "default" : fileName_.substr(dot_pos));
+
+        header += "Content-Type: " + filetype + "\r\n";
+        header += "Content-Length: " + std::to_string(sbuf.st_size) + "\r\n";
+        header += "Server: " + Util::getServerName() + "\r\n";
+        header += "\r\n";
+        outBuffer_ += header;
+
+        return AnalysisState::ANALYSIS_SUCCESS;
+    }
+
+    if (method_ == HttpMethod::METHOD_POST) {
+        Logger::getLogger().debug("method_ == HttpMethod::METHOD_POST");
+        int postContentLength = stoi(headers_["Content-Length"]);
+        std::string postContent(inBuffer_.begin(), inBuffer_.begin() + postContentLength);
+        Logger::getLogger().info("postContent = {}", postContent);
+        inBuffer_.erase(inBuffer_.begin(), inBuffer_.begin() + postContentLength);
+
+        std::string header;
+        header += "HTTP/1.1 200 OK\r\n";
+        do {
+            auto it = headers_.find("Connection");
+            if (it == headers_.end()) break;
+            const std::string& connectionValue = it->second;
+            if (connectionValue == "Keep-Alive" || connectionValue == "keep-alive") {
+                keepAlive_ = true;
+                header += "Connection: Keep-Alive\r\n";
+                header += "Keep-Alive: timeout=" + std::to_string(DEFAULT_KEEP_ALIVE_TIME) + "\r\n";
+            }
+        } while (false);
+
+        // echo test
+        if (fileName_ == "hello") {
+            Logger::getLogger().debug("echo test");
+            std::string echoMessage = "Hello World";
+            outBuffer_ = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
+            outBuffer_ += std::to_string(echoMessage.length()) + "\r\n\r\n";
+            outBuffer_ += echoMessage;
+            return AnalysisState::ANALYSIS_SUCCESS;
+        }
+
+        if (fileName_ == "favicon.ico") {
+            header += "Content-Type: " + MimeType::getMime(".ico") + "\r\n";
+            header += "Content-Length: " + std::to_string(sizeof(favicon)) + "\r\n";
+            header += "Server: " + Util::getServerName() + "\r\n";
+            header += "\r\n";
+            outBuffer_ += header;
+            outBuffer_ += std::string(favicon, favicon + sizeof(favicon));
+            return AnalysisState::ANALYSIS_SUCCESS;
+        }
+
+        struct stat sbuf;
+        if (stat(requestFileFullPath.c_str(), &sbuf) < 0) {
+            header.clear();
+            handleError(fd_, 404, "Not Found");
+            return AnalysisState::ANALYSIS_ERROR;
+        }
+
+        int dot_pos = fileName_.find('.');
+        std::string filetype = MimeType::getMime(dot_pos < 0 ? "default" : fileName_.substr(dot_pos));
+
+        header += "Content-Type: " + filetype + "\r\n";
+        header += "Content-Length: " + std::to_string(sbuf.st_size) + "\r\n";
+        header += "Server: " + Util::getServerName() + "\r\n";
+        header += "\r\n";
+        outBuffer_ += header;
+
+        int src_fd = open(requestFileFullPath.c_str(), O_RDONLY, 0);
+        if (src_fd < 0) {
+            outBuffer_.clear();
+            handleError(fd_, 404, "Not Found");
+            return AnalysisState::ANALYSIS_ERROR;
+        }
+        
+        void* mmapRet = mmap(NULL, sbuf.st_size, PROT_READ, MAP_PRIVATE, src_fd, 0);
+        close(src_fd);
+        
+        if (mmapRet == MAP_FAILED) {
+            munmap(mmapRet, sbuf.st_size);
+            outBuffer_.clear();
+            handleError(fd_, 404, "Not Found");
+            return AnalysisState::ANALYSIS_ERROR;
+        }
+        char* src_addr = static_cast<char*>(mmapRet);
+        outBuffer_ += std::string(src_addr, src_addr + sbuf.st_size);
+        munmap(mmapRet, sbuf.st_size);
+        return AnalysisState::ANALYSIS_SUCCESS;
+    }
+    
     return AnalysisState::ANALYSIS_ERROR;
 }
 

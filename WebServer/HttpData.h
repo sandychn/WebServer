@@ -2,7 +2,7 @@
  * File: HttpData.h
  * Project: WebServer
  * Author: sandy
- * Last Modified: 2020-10-29 16:08:10
+ * Last Modified: 2020-10-30 19:48:48
  */
 
 #pragma once
@@ -117,7 +117,6 @@ class HttpData : public std::enable_shared_from_this<HttpData> {
     HttpMethod method_;
     HttpVersion HTTPVersion_;
     std::string fileName_;
-    std::string path_;
     int nowReadPos_;
     ProcessState state_;
     ParseState hState_;

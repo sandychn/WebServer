@@ -2,7 +2,7 @@
  * File: Epoll.cpp
  * Project: WebServer
  * Author: sandy
- * Last Modified: 2020-10-29 10:36:01
+ * Last Modified: 2020-10-30 20:29:25
  */
 
 #include "Epoll.h"
@@ -16,9 +16,8 @@
 #include <sys/socket.h>
 
 #include "Util.h"
+#include "Logger.h"
 #include "base/ErrorHandle.h"
-
-#include <spdlog/spdlog.h>
 
 const int EVENTSNUM = 4096;
 const int EPOLLWAIT_TIME = 10000;  // ms
@@ -69,7 +68,7 @@ void Epoll::epollAdd(std::shared_ptr<Channel> request, int timeout) {
     fd2chan_[fd] = request;
 
     if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) < 0) {
-        spdlog::error("epollAdd error");
+        Logger::getLogger().error("epollAdd error");
         fd2chan_[fd].reset();
     }
 }
@@ -85,7 +84,7 @@ void Epoll::epollMod(std::shared_ptr<Channel> request, int timeout) {
         event.data.fd = fd;
         event.events = request->getEvents();
         if (epoll_ctl(epollFd_, EPOLL_CTL_MOD, fd, &event) < 0) {
-            spdlog::error("epollMod error");
+            Logger::getLogger().error("epollMod error");
             fd2chan_[fd].reset();
         }
     }
@@ -99,7 +98,7 @@ void Epoll::epollDel(std::shared_ptr<Channel> request) {
     event.events = request->getLastEvents();
 
     if (epoll_ctl(epollFd_, EPOLL_CTL_DEL, fd, &event) < 0) {
-        spdlog::error("epollDel error");
+        Logger::getLogger().error("epollDel error");
     }
     fd2chan_[fd].reset();
     fd2http_[fd].reset();
@@ -119,7 +118,7 @@ std::vector<std::shared_ptr<Channel>> Epoll::poll() {
 
         int event_count = epoll_wait(epollFd_, &(*events_.begin()), events_.size(), EPOLLWAIT_TIME);
         if (event_count < 0) {
-            spdlog::error("epoll_wait return value < 0");
+            Logger::getLogger().error("epoll_wait return value < 0");
         }
         requestData = getEventsRequest(event_count);
     }
@@ -131,7 +130,7 @@ void Epoll::addTimer(std::shared_ptr<Channel> requestData, int timeout) {
     if (t) {
         timerManager_.addTimer(t, timeout);
     } else {
-        spdlog::warn("timer add failed");
+        Logger::getLogger().warn("timer add failed");
     }
 }
 
@@ -151,7 +150,7 @@ std::vector<std::shared_ptr<Channel>> Epoll::getEventsRequest(int events_count) 
             currentRequestChannel->setEvents(0);
             requestData.push_back(currentRequestChannel);
         } else {
-            spdlog::warn("currentRequestChannel is invalid");
+            Logger::getLogger().warn("currentRequestChannel is invalid");
         }
     }
     return requestData;

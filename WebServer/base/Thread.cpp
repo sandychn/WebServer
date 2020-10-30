@@ -1,3 +1,10 @@
+/*
+ * File: Thread.cpp
+ * Project: base
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:56:46
+ */
+
 #include "Thread.h"
 
 #include <assert.h>

@@ -2,10 +2,11 @@
  * File: Util.cpp
  * Project: WebServer
  * Author: Sandy
- * Last Modified: 2020-10-29 15:09:14
+ * Last Modified: 2020-10-30 20:30:48
  */
 
 #include "Util.h"
+#include "Logger.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -15,8 +16,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
-#include <spdlog/spdlog.h>
 
 namespace Util {
 const int MAX_BUFF = 4096;
@@ -57,7 +56,7 @@ ssize_t readn(int fd, std::string &inBuffer, bool &zero) {
             } else if (errno == EAGAIN) {
                 return readSum;
             } else {
-                spdlog::error("read error");
+                Logger::getLogger().error("read error");
                 return -1;
             }
         } else if (nread == 0) {
@@ -81,7 +80,7 @@ ssize_t readn(int fd, std::string &inBuffer) {
             } else if (errno == EAGAIN) {
                 return readSum;
             } else {
-                spdlog::error("read error");
+                Logger::getLogger().error("read error");
                 return -1;
             }
         } else if (nread == 0) {
@@ -236,6 +235,12 @@ std::string replaceCRLF(const std::string& str) {
         }
     }
     return result;
+}
+
+std::string getErrnoString() {
+    char buffer[0xFF];
+    char* ret = strerror_r(errno, buffer, sizeof(buffer));
+    return std::string(ret);
 }
 
 std::string getServerName() {

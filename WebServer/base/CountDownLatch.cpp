@@ -1,3 +1,10 @@
+/*
+ * File: CountDownLatch.cpp
+ * Project: base
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:56:09
+ */
+
 #include "CountDownLatch.h"
 
 CountDownLatch::CountDownLatch(int count)

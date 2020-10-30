@@ -1,3 +1,10 @@
+/*
+ * File: Thread.h
+ * Project: base
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:56:52
+ */
+
 #pragma once
 
 #include <bits/types.h>

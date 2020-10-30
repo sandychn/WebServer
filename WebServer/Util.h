@@ -1,3 +1,10 @@
+/*
+ * File: Util.h
+ * Project: WebServer
+ * Author: sandy
+ * Last Modified: 2020-10-30 15:10:28
+ */
+
 #pragma once
 
 #include <cstdlib>
@@ -16,5 +23,6 @@ void setSocketNoLinger(int fd);
 void shutDownWR(int fd);
 int socketBindListen(int port);
 std::string replaceCRLF(const std::string& str);
+std::string getErrnoString();
 std::string getServerName();
 }  // namespace Util

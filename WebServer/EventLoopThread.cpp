@@ -1,3 +1,10 @@
+/*
+ * File: EventLoopThread.cpp
+ * Project: WebServer
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:57:39
+ */
+
 #include "EventLoopThread.h"
 
 #include <functional>

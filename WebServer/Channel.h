@@ -1,3 +1,10 @@
+/*
+ * File: Channel.h
+ * Project: WebServer
+ * Author: Sandy
+ * Last Modified: 2020-10-30 19:57:02
+ */
+
 #pragma once
 
 #include <sys/epoll.h>

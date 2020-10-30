@@ -2,7 +2,7 @@
  * File: EventLoop.cpp
  * Project: WebServer
  * Author: sandy
- * Last Modified: 2020-10-29 01:21:32
+ * Last Modified: 2020-10-30 20:29:55
  */
 
 #include "EventLoop.h"
@@ -11,9 +11,8 @@
 #include <sys/eventfd.h>
 
 #include "Util.h"
+#include "Logger.h"
 #include "base/ErrorHandle.h"
-
-#include <spdlog/spdlog.h>
 
 /*
  * __thread是GCC内置的线程局部存储设施，存取效率可以和全局变量相比。
@@ -109,28 +108,28 @@ void EventLoop::queueInLoop(Functor&& cb) {
 }
 
 void EventLoop::wakeup() {
-    spdlog::debug("wakeup");
+    Logger::getLogger().debug("wakeup");
     uint64_t one = 1;
     ssize_t n = Util::writen(wakeupFd_, &one, sizeof(one));
     if (n != sizeof(one)) {
-        spdlog::warn("EventLoop::wakeup() writes {0} bytes instead of {1}", n, sizeof(one));
+        Logger::getLogger().warn("EventLoop::wakeup() writes {0} bytes instead of {1}", n, sizeof(one));
     }
 }
 
 void EventLoop::handleRead() {
-    spdlog::debug("handleRead");
+    Logger::getLogger().debug("handleRead");
     uint64_t one = 1;
     ssize_t n = Util::readn(wakeupFd_, &one, sizeof(one));
     if (n != sizeof(one)) {
-        spdlog::warn("EventLoop::wakeup() reads {0} bytes instead of {1}", n, sizeof(one));
+        Logger::getLogger().warn("EventLoop::wakeup() reads {0} bytes instead of {1}", n, sizeof(one));
     }
-    spdlog::debug("pwakeupChannel->getEvents() = {0}", pwakeupChannel_->getEvents());
+    Logger::getLogger().debug("pwakeupChannel->getEvents() = {0}", pwakeupChannel_->getEvents());
     pwakeupChannel_->setEvents(EPOLLIN | EPOLLET);
 }
 
 // called in EventLoop::loop()
 void EventLoop::doPendingFunctors() {
-    spdlog::debug("doPendingFunctors");
+    Logger::getLogger().debug("doPendingFunctors");
     std::vector<Functor> functors;
     callingPendingFunctors_ = true;
 
@@ -154,6 +153,6 @@ void EventLoop::doPendingFunctors() {
  */
 
 void EventLoop::handleConn() {
-    spdlog::debug("handleConn");
+    Logger::getLogger().debug("handleConn");
     updatePoller(pwakeupChannel_, 0);
 }
