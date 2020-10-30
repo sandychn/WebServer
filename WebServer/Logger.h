@@ -2,7 +2,7 @@
  * File: Logger.h
  * Project: WebServer
  * Author: Sandy
- * Last Modified: 2020-10-30 22:08:20
+ * Last Modified: 2020-10-30 22:45:51
  */
 
 #pragma once
@@ -18,6 +18,7 @@ public:
     Logger() = delete;
 
     static spdlog::logger& getLogger();
+    static bool isValid();
     static void initLogger(const std::string& logPath);
 
 private:

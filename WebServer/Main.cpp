@@ -2,19 +2,30 @@
  * File: Main.cpp
  * Project: WebServer
  * Author: sandy
- * Last Modified: 2020-10-30 20:34:21
+ * Last Modified: 2020-10-30 22:53:41
  */
 
 #include <cstdio>
+#include <cstdlib>
+#include <signal.h>
 
 #include "EventLoop.h"
 #include "Parameters.h"
 #include "Server.h"
 #include "Logger.h"
+#include "spdlog/spdlog.h"
 
-#include <spdlog/spdlog.h>
+void loggerSave(int signalID) {
+    if (Logger::isValid()) {
+        Logger::getLogger().info("SIGINT recieved, exiting");
+        Logger::getLogger().flush();
+    }
+    exit(0);
+}
 
 int main(int argc, char *argv[]) {
+    signal(SIGINT, loggerSave);
+
     Parameters parameters = Parameters::getParameters(argc, argv);
 
     spdlog::set_level(spdlog::level::debug);
